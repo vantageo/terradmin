@@ -114,7 +114,7 @@ model TerraformPlan {
   id        Int      @id @default(autoincrement())
   type      String   // "resource-group" or "vm"
   variables Json     // Terraform variables as JSON
-  status    String   @default("pending") // "pending", "init", "planning", "success", "failed"
+  status    String   @default("pending") // "pending", "init", "planning", "success", "failed", "applying", "applied", "apply_failed"
   output    String?  @db.Text // Raw terraform output
   errorMessage String? @db.Text
   createdAt DateTime @default(now())

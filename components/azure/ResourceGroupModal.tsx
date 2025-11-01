@@ -16,6 +16,8 @@ interface ResourceGroupModalProps {
 
 export default function ResourceGroupModal({ isOpen, onClose }: ResourceGroupModalProps) {
   const [loading, setLoading] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [applied, setApplied] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [planResult, setPlanResult] = useState<{ planId: string; output: string; tfplan: string } | null>(null)
   const [activeTab, setActiveTab] = useState<'logs' | 'plan'>('logs')
@@ -38,7 +40,58 @@ export default function ResourceGroupModal({ isOpen, onClose }: ResourceGroupMod
       location: 'eastus',
     })
     setActiveTab('logs')
+    setApplying(false)
+    setApplied(false)
     onClose()
+  }
+
+  const handleApply = async () => {
+    if (!planResult) return
+    
+    setApplying(true)
+    setActiveTab('logs') // Switch to logs tab to show apply output
+    
+    try {
+      const response = await fetch(`/api/terraform/apply/${planResult.planId}`, {
+        method: 'POST',
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        // Fetch the updated logs from database to ensure UI matches what's stored
+        const logsResponse = await fetch(`/api/terraform/plan/${planResult.planId}/logs`)
+        const logsData = await logsResponse.json()
+        
+        if (logsData.success) {
+          setPlanResult(prev => prev ? {
+            ...prev,
+            output: logsData.output
+          } : null)
+        }
+        
+        setApplied(true)
+        setToast({ message: 'Terraform apply completed successfully!', type: 'success' })
+      } else {
+        // Fetch logs even on failure to show error output from DB
+        const logsResponse = await fetch(`/api/terraform/plan/${planResult.planId}/logs`)
+        const logsData = await logsResponse.json()
+        
+        if (logsData.success) {
+          setPlanResult(prev => prev ? {
+            ...prev,
+            output: logsData.output
+          } : null)
+        }
+        
+        setToast({ message: 'Terraform apply failed: ' + data.error, type: 'error' })
+      }
+    } catch (error: any) {
+      console.error('Error applying plan:', error)
+      setToast({ message: 'Failed to execute terraform apply: ' + error.message, type: 'error' })
+    } finally {
+      setApplying(false)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -240,24 +293,37 @@ export default function ResourceGroupModal({ isOpen, onClose }: ResourceGroupMod
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between space-x-3 p-6 border-t border-navy-700">
-              <button
-                type="button"
-                onClick={() => {
-                  // TODO: Implement apply functionality
-                  console.log('Run clicked for plan:', planResult.planId)
-                }}
-                className="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-navy-900 font-medium rounded-lg transition-colors flex items-center space-x-2"
-              >
-                <FolderPlus className="w-4 h-4" />
-                <span>Run</span>
-              </button>
+            <div className="flex items-center justify-end space-x-3 p-6 border-t border-navy-700">
               <button
                 type="button"
                 onClick={handleClose}
                 className="px-4 py-2 bg-navy-700 hover:bg-navy-600 text-white rounded-lg transition-colors"
+                disabled={applying}
               >
                 Close
+              </button>
+              <button
+                type="button"
+                onClick={handleApply}
+                disabled={applying || applied}
+                className="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-navy-900 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              >
+                {applying ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Applying...</span>
+                  </>
+                ) : applied ? (
+                  <>
+                    <FolderPlus className="w-4 h-4" />
+                    <span>Applied</span>
+                  </>
+                ) : (
+                  <>
+                    <FolderPlus className="w-4 h-4" />
+                    <span>Apply</span>
+                  </>
+                )}
               </button>
             </div>
           </>

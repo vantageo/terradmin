@@ -50,3 +50,5 @@ next-env.d.ts
 **/plan.txt
 **/terraform.tfstate
 **/terraform.tfstate.backup
+**/*.tfstate
+**/*.tfstate.backup
