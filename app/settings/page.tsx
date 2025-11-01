@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { Settings as SettingsIcon, Cloud, Bell, Users } from 'lucide-react'
+import { Settings as SettingsIcon, Cloud, Bell, Users, FileCode, FileJson } from 'lucide-react'
 import CloudProviders from '@/components/settings/CloudProviders'
 import NotificationSettings from '@/components/settings/NotificationSettings'
+import TerraformSettings from '@/components/settings/TerraformSettings'
+import BicepSettings from '@/components/settings/BicepSettings'
 import UserManagement from '@/components/settings/UserManagement'
 
-type Tab = 'providers' | 'notifications' | 'users'
+type Tab = 'providers' | 'notifications' | 'terraform' | 'bicep' | 'users'
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('providers')
@@ -14,6 +16,8 @@ export default function SettingsPage() {
   const tabs = [
     { id: 'providers' as Tab, label: 'Cloud Providers', icon: Cloud },
     { id: 'notifications' as Tab, label: 'Notification Settings', icon: Bell },
+    { id: 'terraform' as Tab, label: 'Terraform', icon: FileCode },
+    { id: 'bicep' as Tab, label: 'Bicep', icon: FileJson },
     { id: 'users' as Tab, label: 'User Management', icon: Users },
   ]
 
@@ -58,6 +62,8 @@ export default function SettingsPage() {
         <div className="p-6">
           {activeTab === 'providers' && <CloudProviders />}
           {activeTab === 'notifications' && <NotificationSettings />}
+          {activeTab === 'terraform' && <TerraformSettings />}
+          {activeTab === 'bicep' && <BicepSettings />}
           {activeTab === 'users' && <UserManagement />}
         </div>
       </div>
