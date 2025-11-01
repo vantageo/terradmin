@@ -95,13 +95,18 @@ model ResourceGroup {
 }
 
 model TerraformTemplate {
-  id          String   @id @default("terraform_template") // Singleton - only one record
-  rgContent   String   @db.Text // Resource Group template (resources only)
-  rgVariables String   @db.Text // Resource Group variables
-  vmContent   String   @db.Text // VM template (resources only)
-  vmVariables String   @db.Text // VM variables
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  resource         String   // "rg" or "vm"
+  type             String?  // null for RG, "linux" or "windows" for VM
+  name             String   // User-friendly name
+  description      String?  // Optional description
+  templateContent  String   @db.Text // Template resources only
+  variablesContent String   @db.Text // Variable declarations only
+  isDefault        Boolean  @default(false) // Mark default template for each resource/type
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  @@unique([resource, type]) // Ensure only one template per resource/type combination
 }
 
 model BicepTemplate {

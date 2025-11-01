@@ -1,38 +1,123 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FileCode, Plus, Edit, Trash2, Copy, Save } from 'lucide-react'
+import { FileCode, Save } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import Toast from '@/components/Toast'
-
-interface Template {
-  id: string
-  name: string
-  type: 'resource-group' | 'vm'
-  description: string
-  lastModified: string
-}
+import CustomSelect from '@/components/ui/CustomSelect'
 
 export default function TerraformSettings() {
-  const [selectedType, setSelectedType] = useState<'resource-group' | 'vm'>('resource-group')
+  const [selectedTab, setSelectedTab] = useState<'resource-group' | 'vm'>('resource-group')
+  const [vmType, setVmType] = useState<'linux' | 'windows'>('linux')
   const [isSaving, setIsSaving] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   
-  // Default Resource Group Terraform template (resources only)
-  const [rgTemplate, setRgTemplate] = useState(`# Configure the Azure provider
+  // Template and variables content states
+  const [rgTemplate, setRgTemplate] = useState('')
+  const [rgVariables, setRgVariables] = useState('')
+  const [vmTemplate, setVmTemplate] = useState('')
+  const [vmVariables, setVmVariables] = useState('')
+
+  // Load templates on mount and when switching
+  useEffect(() => {
+    if (selectedTab === 'resource-group') {
+      loadTemplate('rg', null)
+    }
+  }, [selectedTab])
+
+  useEffect(() => {
+    if (selectedTab === 'vm') {
+      loadTemplate('vm', vmType)
+    }
+  }, [selectedTab, vmType])
+
+  const loadTemplate = async (resource: string, type: string | null) => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('resource', resource)
+      if (type) params.set('type', type)
+      
+      const response = await fetch(`/api/terraform/template?${params}`)
+      const data = await response.json()
+      
+      if (data.success && data.template) {
+        if (resource === 'rg') {
+          setRgTemplate(data.template.templateContent || '')
+          setRgVariables(data.template.variablesContent || '')
+        } else {
+          setVmTemplate(data.template.templateContent || '')
+          setVmVariables(data.template.variablesContent || '')
+        }
+      } else {
+        // Set default content if no template exists
+        if (resource === 'rg') {
+          setRgTemplate(getDefaultRgTemplate())
+          setRgVariables(getDefaultRgVariables())
+        } else {
+          setVmTemplate(getDefaultVmTemplate(type as 'linux' | 'windows'))
+          setVmVariables(getDefaultVmVariables(type as 'linux' | 'windows'))
+        }
+      }
+    } catch (error) {
+      console.error('Error loading template:', error)
+      setToast({ message: 'Failed to load template', type: 'error' })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSaveTemplate = async () => {
+    setIsSaving(true)
+    try {
+      const resource = selectedTab === 'resource-group' ? 'rg' : 'vm'
+      const type = selectedTab === 'vm' ? vmType : null
+      const templateContent = selectedTab === 'resource-group' ? rgTemplate : vmTemplate
+      const variablesContent = selectedTab === 'resource-group' ? rgVariables : vmVariables
+      const name = selectedTab === 'resource-group' 
+        ? 'Resource Group Template' 
+        : `${vmType.charAt(0).toUpperCase() + vmType.slice(1)} VM Template`
+      
+      const response = await fetch('/api/terraform/template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resource,
+          type,
+          name,
+          templateContent,
+          variablesContent,
+        }),
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setToast({ message: 'Template saved successfully!', type: 'success' })
+      } else {
+        throw new Error(data.error || 'Failed to save template')
+      }
+    } catch (error: any) {
+      console.error('Error saving template:', error)
+      setToast({ message: error.message || 'Failed to save template', type: 'error' })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const getDefaultRgTemplate = () => `# Configure the Azure provider
 provider "azurerm" {
-  subscription_id = "dbc15ef2-ad5a-4e72-83f8-680df5e2a9f0"
   features {}
 }
 
 # Create a Resource Group
-resource "azurerm_resource_group" "example" {
+resource "azurerm_resource_group" "main" {
   name     = var.resource_group_name
   location = var.location
-}`)
+}`
 
-  // Default Resource Group Variables
-  const [rgVariables, setRgVariables] = useState(`variable "resource_group_name" {
+  const getDefaultRgVariables = () => `variable "resource_group_name" {
   description = "Name of the Azure Resource Group"
   type        = string
 }
@@ -40,10 +125,17 @@ resource "azurerm_resource_group" "example" {
 variable "location" {
   description = "Azure region where the resources will be created"
   type        = string
-}`)
+}`
 
-  // Default VM Terraform template (resources only)
-  const [vmTemplate, setVmTemplate] = useState(`resource "azurerm_linux_virtual_machine" "main" {
+  const getDefaultVmTemplate = (type: 'linux' | 'windows') => {
+    if (type === 'linux') {
+      return `# Configure the Azure provider
+provider "azurerm" {
+  features {}
+}
+
+# Create a Linux Virtual Machine
+resource "azurerm_linux_virtual_machine" "main" {
   name                = var.vm_name
   resource_group_name = var.resource_group_name
   location            = var.location
@@ -65,16 +157,10 @@ variable "location" {
   }
   
   source_image_reference {
-    publisher = var.image_publisher
-    offer     = var.image_offer
-    sku       = var.image_sku
+    publisher = "Canonical"
+    offer     = "UbuntuServer"
+    sku       = "18.04-LTS"
     version   = "latest"
-  }
-  
-  tags = {
-    Environment = var.environment
-    ManagedBy   = "TerraAdmin"
-    Project     = var.project_name
   }
 }
 
@@ -87,282 +173,148 @@ resource "azurerm_network_interface" "main" {
     name                          = "internal"
     subnet_id                     = var.subnet_id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = var.enable_public_ip ? azurerm_public_ip.main[0].id : null
+  }
+}`
+    } else {
+      return `# Configure the Azure provider
+provider "azurerm" {
+  features {}
+}
+
+# Create a Windows Virtual Machine
+resource "azurerm_windows_virtual_machine" "main" {
+  name                = var.vm_name
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  size                = var.vm_size
+  admin_username      = var.admin_username
+  admin_password      = var.admin_password
+  
+  network_interface_ids = [
+    azurerm_network_interface.main.id,
+  ]
+  
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = var.disk_type
+  }
+  
+  source_image_reference {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2019-Datacenter"
+    version   = "latest"
   }
 }
 
-resource "azurerm_public_ip" "main" {
-  count               = var.enable_public_ip ? 1 : 0
-  name                = "\${var.vm_name}-pip"
+resource "azurerm_network_interface" "main" {
+  name                = "\${var.vm_name}-nic"
   location            = var.location
   resource_group_name = var.resource_group_name
-  allocation_method   = "Static"
-  sku                 = "Standard"
-}
 
-variable "vm_name" {
-  description = "Name of the virtual machine"
-  type        = string
-}
-
-variable "resource_group_name" {
-  description = "Name of the resource group"
-  type        = string
-}
-
-variable "location" {
-  description = "Azure region for resources"
-  type        = string
-  default     = "eastus"
-}
-
-variable "vm_size" {
-  description = "Size of the virtual machine"
-  type        = string
-  default     = "Standard_B2s"
-}
-
-variable "admin_username" {
-  description = "Admin username for the VM"
-  type        = string
-  default     = "azureuser"
-}
-
-variable "ssh_public_key" {
-  description = "SSH public key for authentication"
-  type        = string
-}
-
-variable "disk_type" {
-  description = "Type of managed disk"
-  type        = string
-  default     = "Standard_LRS"
-}
-
-variable "image_publisher" {
-  description = "OS image publisher"
-  type        = string
-  default     = "Canonical"
-}
-
-variable "image_offer" {
-  description = "OS image offer"
-  type        = string
-  default     = "0001-com-ubuntu-server-jammy"
-}
-
-variable "image_sku" {
-  description = "OS image SKU"
-  type        = string
-  default     = "22_04-lts"
-}
-
-variable "subnet_id" {
-  description = "ID of the subnet"
-  type        = string
-}
-
-variable "enable_public_ip" {
-  description = "Enable public IP address"
-  type        = bool
-  default     = false
-}
-
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "production"
-}
-
-variable "project_name" {
-  description = "Project name for tagging"
-  type        = string
-}
-
-output "vm_id" {
-  description = "The ID of the virtual machine"
-  value       = azurerm_linux_virtual_machine.main.id
-}
-
-output "vm_private_ip" {
-  description = "Private IP address of the VM"
-  value       = azurerm_network_interface.main.private_ip_address
-}
-
-output "vm_public_ip" {
-  description = "Public IP address of the VM"
-  value       = var.enable_public_ip ? azurerm_public_ip.main[0].ip_address : null
-}`)
-
-  // Default VM Variables
-  const [vmVariables, setVmVariables] = useState(`variable "vm_name" {
-  description = "Name of the virtual machine"
-  type        = string
-}
-
-variable "resource_group_name" {
-  description = "Name of the resource group"
-  type        = string
-}
-
-variable "location" {
-  description = "Azure region for resources"
-  type        = string
-  default     = "eastus"
-}
-
-variable "vm_size" {
-  description = "Size of the virtual machine"
-  type        = string
-  default     = "Standard_B2s"
-}
-
-variable "admin_username" {
-  description = "Admin username for the VM"
-  type        = string
-  default     = "azureuser"
-}
-
-variable "ssh_public_key" {
-  description = "SSH public key for authentication"
-  type        = string
-}
-
-variable "disk_type" {
-  description = "Type of managed disk"
-  type        = string
-  default     = "Standard_LRS"
-}
-
-variable "image_publisher" {
-  description = "OS image publisher"
-  type        = string
-  default     = "Canonical"
-}
-
-variable "image_offer" {
-  description = "OS image offer"
-  type        = string
-  default     = "0001-com-ubuntu-server-jammy"
-}
-
-variable "image_sku" {
-  description = "OS image SKU"
-  type        = string
-  default     = "22_04-lts"
-}
-
-variable "subnet_id" {
-  description = "ID of the subnet"
-  type        = string
-}
-
-variable "enable_public_ip" {
-  description = "Enable public IP address"
-  type        = bool
-  default     = false
-}
-
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "production"
-}
-
-variable "project_name" {
-  description = "Project name for tagging"
-  type        = string
-}`)
-
-  // Mock templates - replace with API calls
-  const templates: Template[] = [
-    {
-      id: '1',
-      name: 'Standard Resource Group',
-      type: 'resource-group',
-      description: 'Basic resource group template with standard tags',
-      lastModified: '2 days ago'
-    },
-    {
-      id: '2',
-      name: 'Linux VM - Ubuntu 22.04',
-      type: 'vm',
-      description: 'Standard Ubuntu 22.04 LTS virtual machine',
-      lastModified: '1 week ago'
-    },
-    {
-      id: '3',
-      name: 'Windows VM - Server 2022',
-      type: 'vm',
-      description: 'Windows Server 2022 Datacenter edition',
-      lastModified: '3 days ago'
-    },
-  ]
-
-  const filteredTemplates = templates.filter(t => t.type === selectedType)
-  
-  // Load templates from database on mount
-  useEffect(() => {
-    loadTemplates()
-  }, [])
-
-  const loadTemplates = async () => {
-    try {
-      const response = await fetch('/api/terraform/template')
-      const data = await response.json()
-      
-      if (data.success && data.template) {
-        if (data.template.rgContent) {
-          setRgTemplate(data.template.rgContent)
-        }
-        if (data.template.rgVariables) {
-          setRgVariables(data.template.rgVariables)
-        }
-        if (data.template.vmContent) {
-          setVmTemplate(data.template.vmContent)
-        }
-        if (data.template.vmVariables) {
-          setVmVariables(data.template.vmVariables)
-        }
-      }
-    } catch (error) {
-      console.error('Error loading templates:', error)
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = var.subnet_id
+    private_ip_address_allocation = "Dynamic"
+  }
+}`
     }
   }
-  
-  const handleSaveTemplate = async () => {
-    setIsSaving(true)
-    try {
-      const response = await fetch('/api/terraform/template', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          rgContent: rgTemplate,
-          rgVariables: rgVariables,
-          vmContent: vmTemplate,
-          vmVariables: vmVariables,
-        }),
-      })
 
-      const data = await response.json()
+  const getDefaultVmVariables = (type: 'linux' | 'windows') => {
+    if (type === 'linux') {
+      return `variable "vm_name" {
+  description = "Name of the virtual machine"
+  type        = string
+}
 
-      if (data.success) {
-        setToast({ message: 'Template saved successfully!', type: 'success' })
-      } else {
-        throw new Error(data.error || 'Failed to save')
-      }
-    } catch (error: any) {
-      console.error('Save error:', error)
-      setToast({ message: 'Failed to save template', type: 'error' })
-    } finally {
-      setIsSaving(false)
+variable "resource_group_name" {
+  description = "Name of the resource group"
+  type        = string
+}
+
+variable "location" {
+  description = "Azure region"
+  type        = string
+}
+
+variable "vm_size" {
+  description = "Size of the VM"
+  type        = string
+  default     = "Standard_B2s"
+}
+
+variable "admin_username" {
+  description = "Admin username"
+  type        = string
+  default     = "azureuser"
+}
+
+variable "ssh_public_key" {
+  description = "SSH public key"
+  type        = string
+}
+
+variable "disk_type" {
+  description = "Disk type"
+  type        = string
+  default     = "Standard_LRS"
+}
+
+variable "subnet_id" {
+  description = "Subnet ID"
+  type        = string
+}`
+    } else {
+      return `variable "vm_name" {
+  description = "Name of the virtual machine"
+  type        = string
+}
+
+variable "resource_group_name" {
+  description = "Name of the resource group"
+  type        = string
+}
+
+variable "location" {
+  description = "Azure region"
+  type        = string
+}
+
+variable "vm_size" {
+  description = "Size of the VM"
+  type        = string
+  default     = "Standard_B2s"
+}
+
+variable "admin_username" {
+  description = "Admin username"
+  type        = string
+  default     = "adminuser"
+}
+
+variable "admin_password" {
+  description = "Admin password"
+  type        = string
+  sensitive   = true
+}
+
+variable "disk_type" {
+  description = "Disk type"
+  type        = string
+  default     = "Standard_LRS"
+}
+
+variable "subnet_id" {
+  description = "Subnet ID"
+  type        = string
+}`
     }
   }
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div>
         <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
           <FileCode className="w-5 h-5 text-accent-400" />
@@ -374,172 +326,153 @@ variable "project_name" {
       {/* Template Type Selector */}
       <div className="flex items-center space-x-6 border-b border-navy-700">
         <button
-          onClick={() => setSelectedType('resource-group')}
+          onClick={() => setSelectedTab('resource-group')}
           className={`px-4 py-3 font-medium transition-all relative ${
-            selectedType === 'resource-group'
+            selectedTab === 'resource-group'
               ? 'text-accent-400'
               : 'text-slate-400 hover:text-slate-300'
           }`}
         >
           Resource Group Template
-          {selectedType === 'resource-group' && (
+          {selectedTab === 'resource-group' && (
             <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-500"></span>
           )}
         </button>
         <button
-          onClick={() => setSelectedType('vm')}
+          onClick={() => setSelectedTab('vm')}
           className={`px-4 py-3 font-medium transition-all relative ${
-            selectedType === 'vm'
+            selectedTab === 'vm'
               ? 'text-accent-400'
               : 'text-slate-400 hover:text-slate-300'
           }`}
         >
           VM Template
-          {selectedType === 'vm' && (
+          {selectedTab === 'vm' && (
             <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-500"></span>
           )}
         </button>
       </div>
 
-      {/* Resource Group Template Editor */}
-      {selectedType === 'resource-group' ? (
-        <div className="space-y-4">
-          {/* Template Editor */}
-          <div className="bg-navy-900 rounded-lg border border-navy-700">
-            <div className="p-4 border-b border-navy-700 flex items-center justify-between">
-              <div>
-                <h4 className="text-white font-medium">Azure Resource Group Template</h4>
-                <p className="text-xs text-slate-400 mt-0.5">Edit your Terraform template for Azure resource groups</p>
-              </div>
-              <button 
-                onClick={handleSaveTemplate}
-                disabled={isSaving}
-                className="flex items-center space-x-2 px-4 py-2 bg-accent-500 hover:bg-accent-600 text-navy-900 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Save className="w-4 h-4" />
-                <span>{isSaving ? 'Saving...' : 'Save Template'}</span>
-              </button>
-            </div>
-
-            <div className="h-[400px]">
-              <Editor
-                height="100%"
-                defaultLanguage="hcl"
-                theme="vs-dark"
-                value={rgTemplate}
-                onChange={(value) => setRgTemplate(value || '')}
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 14,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  tabSize: 2,
-                  wordWrap: 'on',
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Variables Editor */}
-          <div className="bg-navy-900 rounded-lg border border-navy-700">
-            <div className="p-4 border-b border-navy-700">
-              <div>
-                <h4 className="text-white font-medium">Azure Resource Group Variables</h4>
-                <p className="text-xs text-slate-400 mt-0.5">Edit variable declarations for your template</p>
-              </div>
-            </div>
-
-            <div className="h-[400px]">
-              <Editor
-                height="100%"
-                defaultLanguage="hcl"
-                theme="vs-dark"
-                value={rgVariables}
-                onChange={(value) => setRgVariables(value || '')}
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 14,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  tabSize: 2,
-                  wordWrap: 'on',
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      ) : (
-        /* VM Template Editor */
-        <div className="space-y-4">
-          {/* Template Editor */}
-          <div className="bg-navy-900 rounded-lg border border-navy-700">
-            <div className="p-4 border-b border-navy-700 flex items-center justify-between">
-              <div>
-                <h4 className="text-white font-medium">Azure Virtual Machine Template</h4>
-                <p className="text-xs text-slate-400 mt-0.5">Edit your Terraform template for Azure virtual machines</p>
-              </div>
-              <button 
-                onClick={handleSaveTemplate}
-                disabled={isSaving}
-                className="flex items-center space-x-2 px-4 py-2 bg-accent-500 hover:bg-accent-600 text-navy-900 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Save className="w-4 h-4" />
-                <span>{isSaving ? 'Saving...' : 'Save Template'}</span>
-              </button>
-            </div>
-
-            <div className="h-[400px]">
-              <Editor
-                height="100%"
-                defaultLanguage="hcl"
-                theme="vs-dark"
-                value={vmTemplate}
-                onChange={(value) => setVmTemplate(value || '')}
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 14,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  tabSize: 2,
-                  wordWrap: 'on',
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Variables Editor */}
-          <div className="bg-navy-900 rounded-lg border border-navy-700">
-            <div className="p-4 border-b border-navy-700">
-              <div>
-                <h4 className="text-white font-medium">Azure Virtual Machine Variables</h4>
-                <p className="text-xs text-slate-400 mt-0.5">Edit variable declarations for your template</p>
-              </div>
-            </div>
-
-            <div className="h-[400px]">
-              <Editor
-                height="100%"
-                defaultLanguage="hcl"
-                theme="vs-dark"
-                value={vmVariables}
-                onChange={(value) => setVmVariables(value || '')}
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 14,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  tabSize: 2,
-                  wordWrap: 'on',
-                }}
-              />
-            </div>
-          </div>
+      {/* VM Type Dropdown (only shown for VM tab) */}
+      {selectedTab === 'vm' && (
+        <div className="flex items-center space-x-4">
+          <label className="text-sm font-medium text-slate-300">VM Type:</label>
+          <CustomSelect
+            value={vmType}
+            onChange={(value) => setVmType(value as 'linux' | 'windows')}
+            options={[
+              { value: 'linux', label: 'Linux' },
+              { value: 'windows', label: 'Windows' },
+            ]}
+            className="w-48"
+          />
         </div>
       )}
+
+      {/* Template Editor */}
+      <div className="space-y-4">
+        {/* Template Resources Editor */}
+        <div className="bg-navy-900 rounded-lg border border-navy-700">
+          <div className="p-4 border-b border-navy-700 flex items-center justify-between">
+            <div>
+              <h4 className="text-white font-medium">
+                {selectedTab === 'resource-group' 
+                  ? 'Azure Resource Group Template' 
+                  : `Azure ${vmType.charAt(0).toUpperCase() + vmType.slice(1)} VM Template`}
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Edit your Terraform template resources
+              </p>
+            </div>
+            <button 
+              onClick={handleSaveTemplate}
+              disabled={isSaving || isLoading}
+              className="flex items-center space-x-2 px-4 py-2 bg-accent-500 hover:bg-accent-600 text-navy-900 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save className="w-4 h-4" />
+              <span>{isSaving ? 'Saving...' : 'Save Template'}</span>
+            </button>
+          </div>
+
+          <div className="h-[400px]">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-slate-400">Loading template...</p>
+              </div>
+            ) : (
+              <Editor
+                height="100%"
+                defaultLanguage="hcl"
+                theme="vs-dark"
+                value={selectedTab === 'resource-group' ? rgTemplate : vmTemplate}
+                onChange={(value) => {
+                  if (selectedTab === 'resource-group') {
+                    setRgTemplate(value || '')
+                  } else {
+                    setVmTemplate(value || '')
+                  }
+                }}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                }}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Variables Editor */}
+        <div className="bg-navy-900 rounded-lg border border-navy-700">
+          <div className="p-4 border-b border-navy-700">
+            <div>
+              <h4 className="text-white font-medium">
+                {selectedTab === 'resource-group' 
+                  ? 'Resource Group Variables' 
+                  : `${vmType.charAt(0).toUpperCase() + vmType.slice(1)} VM Variables`}
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Edit variable declarations for your template
+              </p>
+            </div>
+          </div>
+
+          <div className="h-[400px]">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-slate-400">Loading variables...</p>
+              </div>
+            ) : (
+              <Editor
+                height="100%"
+                defaultLanguage="hcl"
+                theme="vs-dark"
+                value={selectedTab === 'resource-group' ? rgVariables : vmVariables}
+                onChange={(value) => {
+                  if (selectedTab === 'resource-group') {
+                    setRgVariables(value || '')
+                  } else {
+                    setVmVariables(value || '')
+                  }
+                }}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                }}
+              />
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Toast Notification */}
       {toast && (
@@ -552,4 +485,3 @@ variable "project_name" {
     </div>
   )
 }
-

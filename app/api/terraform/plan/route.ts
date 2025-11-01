@@ -42,11 +42,14 @@ export async function POST(request: Request) {
     await fs.mkdir(planFolder, { recursive: true })
     
     // Fetch the resource group template from database
-    const template = await prisma.terraformTemplate.findUnique({
-      where: { id: 'terraform_template' },
+    const template = await prisma.terraformTemplate.findFirst({
+      where: {
+        resource: 'rg',
+        type: null,
+      },
     })
     
-    const rgTemplateContent = template?.rgContent || `# Configure the Azure provider
+    const templateContent = template?.templateContent || `# Configure the Azure provider
 provider "azurerm" {
   features {}
 }
@@ -57,7 +60,7 @@ resource "azurerm_resource_group" "example" {
   location = var.location
 }`
 
-    const rgVariablesContent = template?.rgVariables || `variable "resource_group_name" {
+    const variablesContent = template?.variablesContent || `variable "resource_group_name" {
   description = "Name of the Azure Resource Group"
   type        = string
 }
@@ -67,13 +70,13 @@ variable "location" {
   type        = string
 }`
     
-    // Create rg.tf file
-    const rgTfPath = path.join(planFolder, 'rg.tf')
-    await fs.writeFile(rgTfPath, rgTemplateContent, 'utf-8')
+    // Create main.tf file
+    const mainTfPath = path.join(planFolder, 'main.tf')
+    await fs.writeFile(mainTfPath, templateContent, 'utf-8')
     
     // Create variables.tf file
     const variablesTfPath = path.join(planFolder, 'variables.tf')
-    await fs.writeFile(variablesTfPath, rgVariablesContent, 'utf-8')
+    await fs.writeFile(variablesTfPath, variablesContent, 'utf-8')
     
     // Create terraform.tfvars file dynamically from all variables
     let tfvarsContent = ''

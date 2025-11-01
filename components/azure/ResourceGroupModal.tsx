@@ -43,11 +43,12 @@ export default function ResourceGroupModal({ isOpen, onClose }: ResourceGroupMod
   const loadVariables = async () => {
     setLoadingVariables(true)
     try {
-      const response = await fetch('/api/terraform/template')
+      const response = await fetch('/api/terraform/template?resource=rg')
       const data = await response.json()
       
-      if (data.success && data.template?.rgVariables) {
-        const parsed = parseHclVariables(data.template.rgVariables)
+      if (data.success && data.template?.variablesContent) {
+        // Parse variables from the variables content
+        const parsed = parseHclVariables(data.template.variablesContent)
         setVariables(parsed)
         
         // Set default form values
