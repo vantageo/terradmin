@@ -372,26 +372,32 @@ variable "project_name" {
       </div>
 
       {/* Template Type Selector */}
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-6 border-b border-navy-700">
         <button
           onClick={() => setSelectedType('resource-group')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+          className={`px-4 py-3 font-medium transition-all relative ${
             selectedType === 'resource-group'
-              ? 'bg-accent-500 text-navy-900'
-              : 'bg-navy-800 text-slate-300 hover:bg-navy-700'
+              ? 'text-accent-400'
+              : 'text-slate-400 hover:text-slate-300'
           }`}
         >
           Resource Group Template
+          {selectedType === 'resource-group' && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-500"></span>
+          )}
         </button>
         <button
           onClick={() => setSelectedType('vm')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+          className={`px-4 py-3 font-medium transition-all relative ${
             selectedType === 'vm'
-              ? 'bg-accent-500 text-navy-900'
-              : 'bg-navy-800 text-slate-300 hover:bg-navy-700'
+              ? 'text-accent-400'
+              : 'text-slate-400 hover:text-slate-300'
           }`}
         >
           VM Template
+          {selectedType === 'vm' && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-500"></span>
+          )}
         </button>
       </div>
 

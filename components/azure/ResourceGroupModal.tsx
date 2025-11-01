@@ -357,25 +357,31 @@ export default function ResourceGroupModal({ isOpen, onClose }: ResourceGroupMod
               <div className="flex border-b border-navy-700">
                 <button
                   onClick={() => setActiveTab('logs')}
-                  className={`flex items-center space-x-2 px-6 py-3 text-sm font-medium transition-colors ${
+                  className={`flex items-center space-x-2 px-6 py-3 text-sm font-medium transition-all relative ${
                     activeTab === 'logs'
-                      ? 'text-accent-400 border-b-2 border-accent-500'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'text-accent-400'
+                      : 'text-slate-400 hover:text-slate-300'
                   }`}
                 >
                   <Terminal className="w-4 h-4" />
                   <span>Logs</span>
+                  {activeTab === 'logs' && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-500"></span>
+                  )}
                 </button>
                 <button
                   onClick={() => setActiveTab('plan')}
-                  className={`flex items-center space-x-2 px-6 py-3 text-sm font-medium transition-colors ${
+                  className={`flex items-center space-x-2 px-6 py-3 text-sm font-medium transition-all relative ${
                     activeTab === 'plan'
-                      ? 'text-accent-400 border-b-2 border-accent-500'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'text-accent-400'
+                      : 'text-slate-400 hover:text-slate-300'
                   }`}
                 >
                   <FileText className="w-4 h-4" />
                   <span>Plan File</span>
+                  {activeTab === 'plan' && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-500"></span>
+                  )}
                 </button>
               </div>
 

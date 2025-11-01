@@ -35,7 +35,7 @@ export default function SettingsPage() {
       {/* Tabs Navigation */}
       <div className="bg-navy-800 rounded-lg border border-navy-700">
         <div className="border-b border-navy-700">
-          <nav className="flex space-x-1 p-2">
+          <nav className="flex space-x-6 px-4">
             {tabs.map((tab) => {
               const Icon = tab.icon
               return (
@@ -43,15 +43,18 @@ export default function SettingsPage() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`
-                    flex items-center space-x-2 px-4 py-2.5 rounded-lg font-medium transition-all duration-200
+                    flex items-center space-x-2 px-2 py-3 font-medium transition-all relative
                     ${activeTab === tab.id
-                      ? 'bg-accent-500 text-navy-900 shadow-lg shadow-accent-500/20'
-                      : 'text-slate-300 hover:bg-navy-700 hover:text-white'
+                      ? 'text-accent-400'
+                      : 'text-slate-400 hover:text-slate-300'
                     }
                   `}
                 >
                   <Icon className="w-4 h-4" />
                   <span>{tab.label}</span>
+                  {activeTab === tab.id && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-500"></span>
+                  )}
                 </button>
               )
             })}
