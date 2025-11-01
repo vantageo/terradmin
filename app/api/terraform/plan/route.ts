@@ -75,11 +75,19 @@ variable "location" {
     const variablesTfPath = path.join(planFolder, 'variables.tf')
     await fs.writeFile(variablesTfPath, rgVariablesContent, 'utf-8')
     
-    // Create terraform.tfvars file
+    // Create terraform.tfvars file dynamically from all variables
     let tfvarsContent = ''
     if (type === 'resource-group') {
-      tfvarsContent = `resource_group_name = "${variables.resource_group_name}"
-location            = "${variables.location}"`
+      // Generate tfvars from all submitted variables
+      const tfvarsLines: string[] = []
+      
+      for (const [key, value] of Object.entries(variables)) {
+        // Format each variable line with proper alignment
+        const paddedKey = key.padEnd(20)
+        tfvarsLines.push(`${paddedKey} = "${value}"`)
+      }
+      
+      tfvarsContent = tfvarsLines.join('\n')
     }
     
     const tfvarsPath = path.join(planFolder, 'terraform.tfvars')

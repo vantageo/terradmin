@@ -25,14 +25,19 @@ A multi-cloud VM management dashboard for Azure, AWS, and vCenter built with Nex
 - ✅ **OS Detection** - Linux/Windows icons displayed for each VM
 
 #### Terraform Integration (NEW!)
-- ✅ **Template Management** - Inline Monaco editor for Terraform templates
-- ✅ **Resource Group Templates** - Store and edit RG Terraform templates in DB
-- ✅ **VM Templates** - Store and edit VM Terraform templates in DB
+- ✅ **Template Management** - Dual Monaco editors for templates and variables
+- ✅ **Resource Group Templates** - Separate editors for RG resources and variables
+- ✅ **VM Templates** - Separate editors for VM resources and variables
+- ✅ **Dynamic Form Generation** - Forms auto-generated from HCL variable definitions
+- ✅ **HCL Parsing** - Uses `hcl2-parser` to extract variable metadata
 - ✅ **Plan Execution** - Automated `terraform init` and `terraform plan`
+- ✅ **Apply Execution** - Full `terraform apply` with real-time feedback
 - ✅ **Plan Storage** - Store plans with sequential numeric IDs (starting at 1000)
-- ✅ **Plan Visualization** - Display logs and plan output in modal
+- ✅ **Plan Visualization** - Two-tab view for logs and human-readable plans
 - ✅ **File Management** - Auto-generate terraform files in dedicated folders
 - ✅ **No-Color Output** - Clean terminal output for better readability
+- ✅ **Auto-scroll Logs** - Logs panel automatically scrolls to bottom
+- ✅ **Dynamic tfvars** - All form variables written to terraform.tfvars automatically
 
 #### Settings Management
 - ✅ **Tabbed Settings Interface** with five sections:
@@ -58,7 +63,8 @@ A multi-cloud VM management dashboard for Azure, AWS, and vCenter built with Nex
 - **ORM**: Prisma 6.18.0
 - **Icons**: Lucide React 0.462.0
 - **Code Editor**: Monaco Editor (VS Code editor component)
-- **IaC Tools**: Terraform (automated execution)
+- **HCL Parser**: hcl2-parser (for Terraform variable parsing)
+- **IaC Tools**: Terraform (automated execution with init, plan, apply)
 - **Azure SDKs**: 
   - `@azure/identity` - Authentication
   - `@azure/arm-subscriptions` - Subscription management
@@ -120,8 +126,10 @@ A multi-cloud VM management dashboard for Azure, AWS, and vCenter built with Nex
 #### `TerraformTemplate` (Singleton)
 ```prisma
 - id: "terraform_template" (fixed ID - only one record)
-- rgContent: Text (Resource Group template)
-- vmContent: Text (VM template)
+- rgContent: Text (Resource Group template - resources only)
+- rgVariables: Text (Resource Group variables - variable declarations)
+- vmContent: Text (VM template - resources only)
+- vmVariables: Text (VM variables - variable declarations)
 - createdAt, updatedAt: DateTime
 ```
 
@@ -138,8 +146,8 @@ A multi-cloud VM management dashboard for Azure, AWS, and vCenter built with Nex
 - id: Int @autoincrement (starts at 1000)
 - type: String (resource-group | vm)
 - variables: Json (terraform variables)
-- status: String (pending | init | planning | success | failed)
-- output: Text? (raw terraform output)
+- status: String (pending | init | planning | success | failed | applying | applied | apply_failed)
+- output: Text? (raw terraform output - includes init, plan, and apply logs)
 - errorMessage: Text?
 - createdAt, updatedAt: DateTime
 ```
@@ -195,31 +203,48 @@ Retrieves all Azure VMs from local database (fast).
 
 #### `GET /api/terraform/template`
 Retrieves stored Terraform templates (RG and VM).
-- Returns: `{ rgContent, vmContent }` from singleton record
+- Returns: `{ rgContent, rgVariables, vmContent, vmVariables }` from singleton record
 
 #### `POST /api/terraform/template`
 Saves/updates Terraform templates (upsert).
-- Body: `{ rgContent, vmContent }`
+- Body: `{ rgContent, rgVariables, vmContent, vmVariables }`
 - Singleton pattern - only one template record
+- Stores resources and variable declarations separately
 
 #### `POST /api/terraform/plan`
 **Creates and executes Terraform plan**:
 1. Creates database record with sequential ID (1000+)
 2. Creates folder: `terraform/{planId}/`
 3. Writes files:
-   - `rg.tf` - Template from database
-   - `terraform.tfvars` - User input values
+   - `rg.tf` - Template from database (rgContent)
+   - `variables.tf` - Variable declarations from database (rgVariables)
+   - `terraform.tfvars` - User input values (all form variables dynamically)
 4. Executes `terraform init -no-color`
 5. Executes `terraform plan -no-color -out=apply.tfplan`
 6. Generates `plan.txt` via `terraform show -no-color`
 7. Updates database with output and status
-- Body: `{ type, variables }`
+- Body: `{ type, variables }` (variables is JSON with all form inputs)
 - Returns: `{ success, planId, folder, output }`
 
 #### `GET /api/terraform/plan/[id]/tfplan`
 Retrieves human-readable plan file.
 - Reads pre-generated `plan.txt` file
 - Returns: formatted plan content
+
+#### `GET /api/terraform/plan/[id]/logs`
+Retrieves complete execution logs for a plan.
+- Returns logs from database (init + plan + apply)
+- Body: `{ success, output }`
+
+#### `POST /api/terraform/apply/[id]`
+**Executes Terraform apply for a plan**:
+1. Validates that plan exists and has `apply.tfplan` file
+2. Updates status to "applying"
+3. Executes `terraform apply -no-color apply.tfplan`
+4. Appends apply output to existing logs in database
+5. Updates status to "applied" or "apply_failed"
+6. Returns apply output
+- Returns: `{ success, message, output }`
 
 ### Bicep APIs
 
@@ -456,24 +481,42 @@ The sync process (`POST /api/azure/sync`) performs the following:
 
 ### Resource Group Deployment Modal
 
-**Plan Creation Workflow**:
+**Dynamic Form Generation**:
 1. Click **"+ Resource Group"** button
-2. Fill in form:
-   - Resource Group Name (required)
-   - Location/Region (dropdown)
-3. Click **"Plan"** button
-4. System performs:
+2. System automatically:
+   - Fetches `rgVariables` from database
+   - Parses HCL using `hcl2-parser`
+   - Generates form fields dynamically based on variable definitions
+   - Detects field types: string, number, bool
+   - Shows descriptions as placeholders
+   - Marks required fields (no default value)
+   - Special handling for location/region (dropdown)
+
+**Plan Creation Workflow**:
+3. Fill in dynamically generated form (fields match template variables)
+4. Click **"Plan"** button
+5. System performs:
    - Creates `terraform/{id}/` folder
-   - Generates `rg.tf` from stored template
-   - Creates `terraform.tfvars` with user inputs
+   - Generates `rg.tf` from stored template (rgContent)
+   - Generates `variables.tf` from stored variables (rgVariables)
+   - Creates `terraform.tfvars` with ALL form inputs dynamically
    - Executes `terraform init -no-color`
    - Executes `terraform plan -no-color -out=apply.tfplan`
    - Generates `plan.txt` for human reading
-5. Modal switches to results view with two tabs:
-   - **Logs** - Shows full terraform init + plan output
+6. Modal switches to results view with two tabs:
+   - **Logs** - Shows full terraform init + plan output (auto-scrolls)
    - **Plan File** - Shows formatted plan from plan.txt
-6. **Run** button (placeholder for future `terraform apply`)
-7. **Close** to exit modal
+
+**Apply Workflow**:
+7. Click **"Apply"** button (becomes available after successful plan)
+8. System performs:
+   - Executes `terraform apply -no-color apply.tfplan`
+   - Appends apply output to logs (auto-scrolls to bottom)
+   - Updates database with complete logs
+   - Updates status to "applied"
+9. Button changes: **Apply** → **Applying...** → **Applied** (disabled)
+10. Toast notification shows success/failure
+11. **Close** to exit modal (or leave open to review logs)
 
 ### Settings Page
 
@@ -488,9 +531,13 @@ The sync process (`POST /api/azure/sync`) performs the following:
 
 **Terraform Tab**:
 - Toggle between "Resource Group Template" and "VM Template"
-- Monaco editor (VS Code-like) for editing templates
+- **Dual Monaco editors** for each template type:
+  - **Template Editor** - For resource definitions (provider, resources)
+  - **Variables Editor** - For variable declarations
 - Syntax highlighting for HCL (Terraform language)
-- Save button persists templates to database (singleton pattern)
+- Save button persists all four fields to database (singleton pattern)
+- Templates and variables stored separately for better organization
+- Variables editor content is parsed for dynamic form generation
 - Toast notifications for save confirmation
 
 **Bicep Tab**:
@@ -507,7 +554,7 @@ The sync process (`POST /api/azure/sync`) performs the following:
 ## 📝 Next Steps / TODO
 
 ### High Priority
-1. **Terraform Apply** - Implement "Run" button to execute `terraform apply`
+1. ✅ ~~**Terraform Apply** - Implement "Run" button to execute `terraform apply`~~ (COMPLETED)
 2. **VM Actions** - Implement start/stop/restart/delete for Azure VMs
 3. **VM Deployment** - Terraform plan for VM creation (similar to RG)
 4. **Plan History** - View list of all terraform plans with status
@@ -537,8 +584,8 @@ The sync process (`POST /api/azure/sync`) performs the following:
 4. **No Pagination** - VM list loads all VMs at once
 5. **Hardcoded User** - User profile is static
 6. **Terraform Path** - Hardcoded to `/usr/bin/terraform` (may need adjustment per system)
-7. **No Apply Function** - "Run" button in plan modal doesn't execute terraform apply yet
-8. **No Plan History** - Can't view previous plans (only stored in DB)
+7. **No Plan History UI** - Can't view previous plans in UI (only stored in DB)
+8. **No Rollback** - No terraform destroy or rollback functionality yet
 
 ## 🔧 Development Commands
 
@@ -621,6 +668,21 @@ docker exec -it postgres_db psql -U dbadmin -d terradmin
 - Better than random UUIDs for human readability
 - Sortable and predictable
 
+### Why split templates and variables?
+- Better organization and clarity
+- Variables can be parsed independently for form generation
+- Resources stay clean without variable declarations mixed in
+- Easier to maintain and version control
+- Standard Terraform practice (variables.tf + main.tf)
+
+### Why dynamic form generation?
+- Single source of truth (variables.tf defines the form)
+- No need to update UI code when changing variables
+- Type-safe form fields (string, number, bool)
+- Automatic placeholder text from descriptions
+- Scales to any number of variables
+- Required field detection (no default = required)
+
 ## 📚 Additional Resources
 
 - [Next.js Documentation](https://nextjs.org/docs)
@@ -636,9 +698,17 @@ ISC
 ## 🔥 Recent Updates
 
 ### Latest Features (November 1, 2025)
-- ✅ **Terraform Integration** - Full template management and plan execution
+- ✅ **Terraform Apply** - Full apply execution with real-time feedback
+- ✅ **Dynamic Form Generation** - Forms auto-generated from HCL variable definitions
+- ✅ **Dual Template Editors** - Separate editors for resources and variables
+- ✅ **HCL Parsing** - Uses hcl2-parser to extract variable metadata
+- ✅ **Auto-scroll Logs** - Logs panel automatically scrolls to latest output
+- ✅ **Dynamic tfvars** - All form variables written automatically to terraform.tfvars
+- ✅ **Complete Logging** - Init, plan, and apply output stored in database
+- ✅ **Apply Status Tracking** - Button states: Apply → Applying → Applied
+- ✅ **Terraform Integration** - Full template management and plan/apply execution
 - ✅ **Monaco Editor** - Professional code editor for IaC templates
-- ✅ **Resource Group Planning** - Create terraform plans with visual feedback
+- ✅ **Resource Group Deployment** - Create and apply terraform plans with visual feedback
 - ✅ **Toast Notifications** - Replaced browser alerts with custom toast component
 - ✅ **Plan Visualization** - Two-tab view for logs and plan output
 - ✅ **Sequential Plan IDs** - Clean numbering system starting at 1000
@@ -648,4 +718,4 @@ ISC
 
 **Last Updated**: November 1, 2025  
 **Primary Focus**: Azure VM Management + Terraform Integration  
-**Status**: Development - Core Azure features functional, Terraform planning operational, ready for apply implementation
+**Status**: Development - Core Azure features functional, Terraform plan/apply fully operational with dynamic form generation

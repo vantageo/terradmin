@@ -1,13 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, FolderPlus, Loader2, FileText, Terminal } from 'lucide-react'
 import Toast from '@/components/Toast'
-
-interface TfVars {
-  resource_group_name: string
-  location: string
-}
+import { parseHclVariables, getDefaultFormValues, TerraformVariable } from '@/lib/hclParser'
 
 interface ResourceGroupModalProps {
   isOpen: boolean
@@ -21,12 +17,54 @@ export default function ResourceGroupModal({ isOpen, onClose }: ResourceGroupMod
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [planResult, setPlanResult] = useState<{ planId: string; output: string; tfplan: string } | null>(null)
   const [activeTab, setActiveTab] = useState<'logs' | 'plan'>('logs')
-  const [formData, setFormData] = useState<TfVars>({
-    resource_group_name: '',
-    location: 'eastus',
-  })
+  
+  // Dynamic variables and form data
+  const [variables, setVariables] = useState<TerraformVariable[]>([])
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [loadingVariables, setLoadingVariables] = useState(false)
+  
+  // Ref for logs panel auto-scroll
+  const logsEndRef = useRef<HTMLDivElement>(null)
 
-  const handleInputChange = (field: keyof TfVars, value: string) => {
+  // Load variables when modal opens
+  useEffect(() => {
+    if (isOpen && !planResult) {
+      loadVariables()
+    }
+  }, [isOpen, planResult])
+
+  // Auto-scroll logs panel when output changes
+  useEffect(() => {
+    if (planResult?.output && activeTab === 'logs') {
+      logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [planResult?.output, activeTab])
+
+  const loadVariables = async () => {
+    setLoadingVariables(true)
+    try {
+      const response = await fetch('/api/terraform/template')
+      const data = await response.json()
+      
+      if (data.success && data.template?.rgVariables) {
+        const parsed = parseHclVariables(data.template.rgVariables)
+        setVariables(parsed)
+        
+        // Set default form values
+        const defaults = getDefaultFormValues(parsed)
+        setFormData(defaults)
+      } else {
+        setToast({ message: 'No template variables found', type: 'error' })
+      }
+    } catch (error) {
+      console.error('Error loading variables:', error)
+      setToast({ message: 'Failed to load template variables', type: 'error' })
+    } finally {
+      setLoadingVariables(false)
+    }
+  }
+
+  const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -35,10 +73,8 @@ export default function ResourceGroupModal({ isOpen, onClose }: ResourceGroupMod
 
   const handleClose = () => {
     setPlanResult(null)
-    setFormData({
-      resource_group_name: '',
-      location: 'eastus',
-    })
+    setFormData({})
+    setVariables([])
     setActiveTab('logs')
     setApplying(false)
     setApplied(false)
@@ -141,6 +177,90 @@ export default function ResourceGroupModal({ isOpen, onClose }: ResourceGroupMod
     }
   }
 
+  const renderField = (variable: TerraformVariable) => {
+    const value = formData[variable.name] ?? ''
+
+    // String type
+    if (variable.type === 'string') {
+      // Special handling for location/region
+      if (variable.name === 'location' || variable.name.includes('region')) {
+        return (
+          <select
+            value={value}
+            onChange={(e) => handleInputChange(variable.name, e.target.value)}
+            className="w-full px-4 py-2 bg-navy-900 border border-navy-600 rounded-lg text-white focus:outline-none focus:border-accent-500"
+            required={variable.required}
+          >
+            <option value="">Select region...</option>
+            <option value="eastus">East US</option>
+            <option value="eastus2">East US 2</option>
+            <option value="westus">West US</option>
+            <option value="westus2">West US 2</option>
+            <option value="centralus">Central US</option>
+            <option value="northeurope">North Europe</option>
+            <option value="westeurope">West Europe</option>
+            <option value="uksouth">UK South</option>
+            <option value="ukwest">UK West</option>
+            <option value="southeastasia">Southeast Asia</option>
+            <option value="eastasia">East Asia</option>
+          </select>
+        )
+      }
+      
+      return (
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => handleInputChange(variable.name, e.target.value)}
+          placeholder={variable.description || `Enter ${variable.name}`}
+          className="w-full px-4 py-2 bg-navy-900 border border-navy-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-accent-500"
+          required={variable.required}
+        />
+      )
+    }
+
+    // Number type
+    if (variable.type === 'number') {
+      return (
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => handleInputChange(variable.name, parseFloat(e.target.value) || 0)}
+          placeholder={variable.description || `Enter ${variable.name}`}
+          className="w-full px-4 py-2 bg-navy-900 border border-navy-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-accent-500"
+          required={variable.required}
+        />
+      )
+    }
+
+    // Boolean type
+    if (variable.type === 'bool') {
+      return (
+        <label className="flex items-center space-x-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!value}
+            onChange={(e) => handleInputChange(variable.name, e.target.checked)}
+            className="w-5 h-5 bg-navy-900 border border-navy-600 rounded text-accent-500 focus:ring-accent-500"
+          />
+          <span className="text-slate-300">{variable.description || variable.name}</span>
+        </label>
+      )
+    }
+
+    // Fallback for unknown types
+    return (
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => handleInputChange(variable.name, e.target.value)}
+        placeholder={`${variable.type} - ${variable.description || variable.name}`}
+        className="w-full px-4 py-2 bg-navy-900 border border-navy-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-accent-500"
+        required={variable.required}
+      />
+    )
+  }
+
   if (!isOpen) return null
 
   return (
@@ -172,57 +292,32 @@ export default function ResourceGroupModal({ isOpen, onClose }: ResourceGroupMod
         {/* Content */}
         {!planResult ? (
           <>
-            {/* Form */}
+            {/* Dynamic Form */}
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {/* Resource Group Name */}
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Resource Group Name
-                  <span className="text-red-400 ml-1">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.resource_group_name}
-                  onChange={(e) => handleInputChange('resource_group_name', e.target.value)}
-                  placeholder="e.g., rg-myproject-prod"
-                  className="w-full px-4 py-2 bg-navy-900 border border-navy-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-accent-500"
-                  required
-                />
-                <p className="text-xs text-slate-500 mt-1">Terraform variable: var.resource_group_name</p>
-              </div>
-
-              {/* Location */}
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Location (Region)
-                  <span className="text-red-400 ml-1">*</span>
-                </label>
-                <select
-                  value={formData.location}
-                  onChange={(e) => handleInputChange('location', e.target.value)}
-                  className="w-full px-4 py-2 bg-navy-900 border border-navy-600 rounded-lg text-white focus:outline-none focus:border-accent-500"
-                >
-                  <option value="eastus">East US</option>
-                  <option value="eastus2">East US 2</option>
-                  <option value="westus">West US</option>
-                  <option value="westus2">West US 2</option>
-                  <option value="centralus">Central US</option>
-                  <option value="northeurope">North Europe</option>
-                  <option value="westeurope">West Europe</option>
-                  <option value="uksouth">UK South</option>
-                  <option value="ukwest">UK West</option>
-                  <option value="southeastasia">Southeast Asia</option>
-                  <option value="eastasia">East Asia</option>
-                </select>
-                <p className="text-xs text-slate-500 mt-1">Terraform variable: var.location</p>
-              </div>
-
-              {/* Info Box */}
-              <div className="bg-accent-500/5 border border-accent-500/20 rounded-lg p-4">
-                <p className="text-sm text-slate-300">
-                  <span className="font-medium text-accent-400">Preview:</span> These values will be used as Terraform variables to deploy an Azure Resource Group.
-                </p>
-              </div>
+              {loadingVariables ? (
+                <div className="text-center py-8 text-slate-400">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
+                  <p>Loading template variables...</p>
+                </div>
+              ) : variables.length === 0 ? (
+                <div className="text-center py-8 text-slate-400">
+                  <p>No variables found in template</p>
+                </div>
+              ) : (
+                variables.map((variable) => (
+                  <div key={variable.name}>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      {variable.name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                      {variable.required && <span className="text-red-400 ml-1">*</span>}
+                    </label>
+                    {renderField(variable)}
+                    <p className="text-xs text-slate-500 mt-1">
+                      Terraform variable: var.{variable.name} ({variable.type})
+                      {!variable.required && variable.default !== undefined && ` - default: ${JSON.stringify(variable.default)}`}
+                    </p>
+                  </div>
+                ))
+              )}
             </form>
 
             {/* Footer */}
@@ -237,7 +332,7 @@ export default function ResourceGroupModal({ isOpen, onClose }: ResourceGroupMod
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={loading}
+                disabled={loading || loadingVariables || variables.length === 0}
                 className="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-navy-900 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
               >
                 {loading ? (
@@ -288,6 +383,7 @@ export default function ResourceGroupModal({ isOpen, onClose }: ResourceGroupMod
               <div className="bg-navy-900 rounded-lg border border-navy-700 p-4 max-h-[600px] overflow-auto">
                 <pre className="text-xs text-slate-300 font-mono whitespace-pre-wrap">
                   {activeTab === 'logs' ? planResult.output : planResult.tfplan}
+                  {activeTab === 'logs' && <div ref={logsEndRef} />}
                 </pre>
               </div>
             </div>
