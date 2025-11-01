@@ -1,0 +1,95 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CloudProvider {
+  AZURE
+  AWS
+  VCENTER
+}
+
+enum VMStatus {
+  RUNNING
+  STOPPED
+  DEALLOCATED
+  CREATING
+  DELETING
+  ERROR
+}
+
+model VirtualMachine {
+  id                String        @id @default(cuid())
+  name              String
+  provider          CloudProvider
+  status            VMStatus      @default(STOPPED)
+  powerState        String?       // Detailed power state (e.g., "VM running", "VM deallocated")
+  provisioningState String?       // Provisioning state (e.g., "Succeeded")
+  region            String        // Location/Region
+  size              String        // VM Size (e.g., Standard_B2s)
+  osType            String?       // Windows or Linux
+  computerName      String?       // Computer name
+  publicIpAddress   String?       // Public IP
+  privateIpAddress  String?       // Private IP
+  resourceGroup     String?       // For Azure
+  subscriptionId    String?       // For Azure
+  instanceId        String        @unique // Provider-specific ID (Azure resource ID)
+  vmId              String?       // Azure VM ID (UUID)
+  networkInterfaces Json?         // Network interface details
+  disks             Json?         // Disk information
+  tags              Json?         // Tags
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  lastSyncedAt      DateTime      @default(now()) // Last time synced from cloud provider
+
+  @@index([provider])
+  @@index([status])
+  @@index([resourceGroup])
+}
+
+model DeploymentLog {
+  id            String   @id @default(cuid())
+  vmId          String?
+  action        String
+  status        String
+  message       String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([vmId])
+  @@index([createdAt])
+}
+
+model AzureConfig {
+  id              String   @id @default("azure_config") // Singleton - only one record
+  subscriptionId  String
+  subscriptionName String
+  tenantId        String?
+  state           String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ResourceGroup {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  location       String
+  subscriptionId String
+  provider       CloudProvider @default(AZURE)
+  provisioningState String?
+  tags           Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  lastSyncedAt   DateTime @default(now())
+
+  @@index([subscriptionId])
+  @@index([provider])
+}
