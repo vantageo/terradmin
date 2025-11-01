@@ -56,10 +56,24 @@ resource "azurerm_resource_group" "example" {
   name     = var.resource_group_name
   location = var.location
 }`
+
+    const rgVariablesContent = template?.rgVariables || `variable "resource_group_name" {
+  description = "Name of the Azure Resource Group"
+  type        = string
+}
+
+variable "location" {
+  description = "Azure region where the resources will be created"
+  type        = string
+}`
     
     // Create rg.tf file
     const rgTfPath = path.join(planFolder, 'rg.tf')
     await fs.writeFile(rgTfPath, rgTemplateContent, 'utf-8')
+    
+    // Create variables.tf file
+    const variablesTfPath = path.join(planFolder, 'variables.tf')
+    await fs.writeFile(variablesTfPath, rgVariablesContent, 'utf-8')
     
     // Create terraform.tfvars file
     let tfvarsContent = ''

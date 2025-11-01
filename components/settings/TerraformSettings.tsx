@@ -18,52 +18,31 @@ export default function TerraformSettings() {
   const [isSaving, setIsSaving] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   
-  // Default Resource Group Terraform template
-  const [rgTemplate, setRgTemplate] = useState(`resource "azurerm_resource_group" "main" {
-  name     = var.resource_group_name
-  location = var.location
-  
-  tags = {
-    Environment = var.environment
-    ManagedBy   = "TerraAdmin"
-    CreatedDate = timestamp()
-    Project     = var.project_name
-  }
+  // Default Resource Group Terraform template (resources only)
+  const [rgTemplate, setRgTemplate] = useState(`# Configure the Azure provider
+provider "azurerm" {
+  subscription_id = "dbc15ef2-ad5a-4e72-83f8-680df5e2a9f0"
+  features {}
 }
 
-variable "resource_group_name" {
-  description = "Name of the resource group"
+# Create a Resource Group
+resource "azurerm_resource_group" "example" {
+  name     = var.resource_group_name
+  location = var.location
+}`)
+
+  // Default Resource Group Variables
+  const [rgVariables, setRgVariables] = useState(`variable "resource_group_name" {
+  description = "Name of the Azure Resource Group"
   type        = string
 }
 
 variable "location" {
-  description = "Azure region for resources"
+  description = "Azure region where the resources will be created"
   type        = string
-  default     = "eastus"
-}
-
-variable "environment" {
-  description = "Environment name (dev, staging, production)"
-  type        = string
-  default     = "production"
-}
-
-variable "project_name" {
-  description = "Project name for tagging"
-  type        = string
-}
-
-output "resource_group_id" {
-  description = "The ID of the resource group"
-  value       = azurerm_resource_group.main.id
-}
-
-output "resource_group_name" {
-  description = "The name of the resource group"
-  value       = azurerm_resource_group.main.name
 }`)
 
-  // Default VM Terraform template
+  // Default VM Terraform template (resources only)
   const [vmTemplate, setVmTemplate] = useState(`resource "azurerm_linux_virtual_machine" "main" {
   name                = var.vm_name
   resource_group_name = var.resource_group_name
@@ -215,6 +194,86 @@ output "vm_public_ip" {
   value       = var.enable_public_ip ? azurerm_public_ip.main[0].ip_address : null
 }`)
 
+  // Default VM Variables
+  const [vmVariables, setVmVariables] = useState(`variable "vm_name" {
+  description = "Name of the virtual machine"
+  type        = string
+}
+
+variable "resource_group_name" {
+  description = "Name of the resource group"
+  type        = string
+}
+
+variable "location" {
+  description = "Azure region for resources"
+  type        = string
+  default     = "eastus"
+}
+
+variable "vm_size" {
+  description = "Size of the virtual machine"
+  type        = string
+  default     = "Standard_B2s"
+}
+
+variable "admin_username" {
+  description = "Admin username for the VM"
+  type        = string
+  default     = "azureuser"
+}
+
+variable "ssh_public_key" {
+  description = "SSH public key for authentication"
+  type        = string
+}
+
+variable "disk_type" {
+  description = "Type of managed disk"
+  type        = string
+  default     = "Standard_LRS"
+}
+
+variable "image_publisher" {
+  description = "OS image publisher"
+  type        = string
+  default     = "Canonical"
+}
+
+variable "image_offer" {
+  description = "OS image offer"
+  type        = string
+  default     = "0001-com-ubuntu-server-jammy"
+}
+
+variable "image_sku" {
+  description = "OS image SKU"
+  type        = string
+  default     = "22_04-lts"
+}
+
+variable "subnet_id" {
+  description = "ID of the subnet"
+  type        = string
+}
+
+variable "enable_public_ip" {
+  description = "Enable public IP address"
+  type        = bool
+  default     = false
+}
+
+variable "environment" {
+  description = "Environment name"
+  type        = string
+  default     = "production"
+}
+
+variable "project_name" {
+  description = "Project name for tagging"
+  type        = string
+}`)
+
   // Mock templates - replace with API calls
   const templates: Template[] = [
     {
@@ -256,8 +315,14 @@ output "vm_public_ip" {
         if (data.template.rgContent) {
           setRgTemplate(data.template.rgContent)
         }
+        if (data.template.rgVariables) {
+          setRgVariables(data.template.rgVariables)
+        }
         if (data.template.vmContent) {
           setVmTemplate(data.template.vmContent)
+        }
+        if (data.template.vmVariables) {
+          setVmVariables(data.template.vmVariables)
         }
       }
     } catch (error) {
@@ -275,7 +340,9 @@ output "vm_public_ip" {
         },
         body: JSON.stringify({
           rgContent: rgTemplate,
+          rgVariables: rgVariables,
           vmContent: vmTemplate,
+          vmVariables: vmVariables,
         }),
       })
 
@@ -330,76 +397,140 @@ output "vm_public_ip" {
 
       {/* Resource Group Template Editor */}
       {selectedType === 'resource-group' ? (
-        <div className="bg-navy-900 rounded-lg border border-navy-700">
-          <div className="p-4 border-b border-navy-700 flex items-center justify-between">
-            <div>
-              <h4 className="text-white font-medium">Azure Resource Group Template</h4>
-              <p className="text-xs text-slate-400 mt-0.5">Edit your Terraform template for Azure resource groups</p>
+        <div className="space-y-4">
+          {/* Template Editor */}
+          <div className="bg-navy-900 rounded-lg border border-navy-700">
+            <div className="p-4 border-b border-navy-700 flex items-center justify-between">
+              <div>
+                <h4 className="text-white font-medium">Azure Resource Group Template</h4>
+                <p className="text-xs text-slate-400 mt-0.5">Edit your Terraform template for Azure resource groups</p>
+              </div>
+              <button 
+                onClick={handleSaveTemplate}
+                disabled={isSaving}
+                className="flex items-center space-x-2 px-4 py-2 bg-accent-500 hover:bg-accent-600 text-navy-900 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSaving ? 'Saving...' : 'Save Template'}</span>
+              </button>
             </div>
-            <button 
-              onClick={handleSaveTemplate}
-              disabled={isSaving}
-              className="flex items-center space-x-2 px-4 py-2 bg-accent-500 hover:bg-accent-600 text-navy-900 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Save className="w-4 h-4" />
-              <span>{isSaving ? 'Saving...' : 'Save Template'}</span>
-            </button>
+
+            <div className="h-[400px]">
+              <Editor
+                height="100%"
+                defaultLanguage="hcl"
+                theme="vs-dark"
+                value={rgTemplate}
+                onChange={(value) => setRgTemplate(value || '')}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                }}
+              />
+            </div>
           </div>
 
-          <div className="h-[600px]">
-            <Editor
-              height="100%"
-              defaultLanguage="hcl"
-              theme="vs-dark"
-              value={rgTemplate}
-              onChange={(value) => setRgTemplate(value || '')}
-              options={{
-                minimap: { enabled: false },
-                fontSize: 14,
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                tabSize: 2,
-                wordWrap: 'on',
-              }}
-            />
+          {/* Variables Editor */}
+          <div className="bg-navy-900 rounded-lg border border-navy-700">
+            <div className="p-4 border-b border-navy-700">
+              <div>
+                <h4 className="text-white font-medium">Azure Resource Group Variables</h4>
+                <p className="text-xs text-slate-400 mt-0.5">Edit variable declarations for your template</p>
+              </div>
+            </div>
+
+            <div className="h-[400px]">
+              <Editor
+                height="100%"
+                defaultLanguage="hcl"
+                theme="vs-dark"
+                value={rgVariables}
+                onChange={(value) => setRgVariables(value || '')}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                }}
+              />
+            </div>
           </div>
         </div>
       ) : (
         /* VM Template Editor */
-        <div className="bg-navy-900 rounded-lg border border-navy-700">
-          <div className="p-4 border-b border-navy-700 flex items-center justify-between">
-            <div>
-              <h4 className="text-white font-medium">Azure Virtual Machine Template</h4>
-              <p className="text-xs text-slate-400 mt-0.5">Edit your Terraform template for Azure virtual machines</p>
+        <div className="space-y-4">
+          {/* Template Editor */}
+          <div className="bg-navy-900 rounded-lg border border-navy-700">
+            <div className="p-4 border-b border-navy-700 flex items-center justify-between">
+              <div>
+                <h4 className="text-white font-medium">Azure Virtual Machine Template</h4>
+                <p className="text-xs text-slate-400 mt-0.5">Edit your Terraform template for Azure virtual machines</p>
+              </div>
+              <button 
+                onClick={handleSaveTemplate}
+                disabled={isSaving}
+                className="flex items-center space-x-2 px-4 py-2 bg-accent-500 hover:bg-accent-600 text-navy-900 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSaving ? 'Saving...' : 'Save Template'}</span>
+              </button>
             </div>
-            <button 
-              onClick={handleSaveTemplate}
-              disabled={isSaving}
-              className="flex items-center space-x-2 px-4 py-2 bg-accent-500 hover:bg-accent-600 text-navy-900 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Save className="w-4 h-4" />
-              <span>{isSaving ? 'Saving...' : 'Save Template'}</span>
-            </button>
+
+            <div className="h-[400px]">
+              <Editor
+                height="100%"
+                defaultLanguage="hcl"
+                theme="vs-dark"
+                value={vmTemplate}
+                onChange={(value) => setVmTemplate(value || '')}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                }}
+              />
+            </div>
           </div>
 
-          <div className="h-[600px]">
-            <Editor
-              height="100%"
-              defaultLanguage="hcl"
-              theme="vs-dark"
-              value={vmTemplate}
-              onChange={(value) => setVmTemplate(value || '')}
-              options={{
-                minimap: { enabled: false },
-                fontSize: 14,
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                tabSize: 2,
-                wordWrap: 'on',
-              }}
-            />
+          {/* Variables Editor */}
+          <div className="bg-navy-900 rounded-lg border border-navy-700">
+            <div className="p-4 border-b border-navy-700">
+              <div>
+                <h4 className="text-white font-medium">Azure Virtual Machine Variables</h4>
+                <p className="text-xs text-slate-400 mt-0.5">Edit variable declarations for your template</p>
+              </div>
+            </div>
+
+            <div className="h-[400px]">
+              <Editor
+                height="100%"
+                defaultLanguage="hcl"
+                theme="vs-dark"
+                value={vmVariables}
+                onChange={(value) => setVmVariables(value || '')}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  wordWrap: 'on',
+                }}
+              />
+            </div>
           </div>
         </div>
       )}

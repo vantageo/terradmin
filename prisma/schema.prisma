@@ -95,11 +95,13 @@ model ResourceGroup {
 }
 
 model TerraformTemplate {
-  id        String   @id @default("terraform_template") // Singleton - only one record
-  rgContent String   @db.Text // Resource Group template content
-  vmContent String   @db.Text // VM template content
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default("terraform_template") // Singleton - only one record
+  rgContent   String   @db.Text // Resource Group template (resources only)
+  rgVariables String   @db.Text // Resource Group variables
+  vmContent   String   @db.Text // VM template (resources only)
+  vmVariables String   @db.Text // VM variables
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model BicepTemplate {

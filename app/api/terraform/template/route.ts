@@ -29,19 +29,23 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { rgContent, vmContent } = body
+    const { rgContent, rgVariables, vmContent, vmVariables } = body
     
     // Upsert - update if exists, create if not (singleton pattern)
     const template = await prisma.terraformTemplate.upsert({
       where: { id: 'terraform_template' },
       update: {
         rgContent: rgContent || '',
+        rgVariables: rgVariables || '',
         vmContent: vmContent || '',
+        vmVariables: vmVariables || '',
       },
       create: {
         id: 'terraform_template',
         rgContent: rgContent || '',
+        rgVariables: rgVariables || '',
         vmContent: vmContent || '',
+        vmVariables: vmVariables || '',
       },
     })
     
