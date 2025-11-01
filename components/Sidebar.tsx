@@ -6,7 +6,8 @@ import {
   LayoutDashboard, 
   Cloud, 
   Server, 
-  Database, 
+  Database,
+  Activity,
   Settings,
   ChevronLeft
 } from 'lucide-react'
@@ -17,6 +18,7 @@ const navigation = [
   { name: 'Azure VMs', href: '/azure', icon: Cloud },
   { name: 'AWS VMs', href: '/aws', icon: Server },
   { name: 'vCenter VMs', href: '/vcenter', icon: Database },
+  { name: 'Activity', href: '/activity', icon: Activity },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
