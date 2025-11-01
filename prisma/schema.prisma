@@ -93,3 +93,30 @@ model ResourceGroup {
   @@index([subscriptionId])
   @@index([provider])
 }
+
+model TerraformTemplate {
+  id        String   @id @default("terraform_template") // Singleton - only one record
+  rgContent String   @db.Text // Resource Group template content
+  vmContent String   @db.Text // VM template content
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BicepTemplate {
+  id        String   @id @default("bicep_template") // Singleton - only one record
+  rgContent String   @db.Text // Resource Group template content
+  vmContent String   @db.Text // VM template content
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TerraformPlan {
+  id        Int      @id @default(autoincrement())
+  type      String   // "resource-group" or "vm"
+  variables Json     // Terraform variables as JSON
+  status    String   @default("pending") // "pending", "init", "planning", "success", "failed"
+  output    String?  @db.Text // Raw terraform output
+  errorMessage String? @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

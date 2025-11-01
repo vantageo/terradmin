@@ -11,6 +11,7 @@ A multi-cloud VM management dashboard for Azure, AWS, and vCenter built with Nex
 - **PostgreSQL Database** via Docker with Prisma ORM
 - **Dark Navy Theme** with light green accents using Tailwind CSS
 - **Responsive Layout** with collapsible sidebar navigation
+- **Toast Notifications** - Custom toast component for user feedback
 
 #### Azure Integration (PRIMARY FOCUS)
 - ✅ **Azure CLI Authentication** using `AzureCliCredential`
@@ -23,10 +24,22 @@ A multi-cloud VM management dashboard for Azure, AWS, and vCenter built with Nex
 - ✅ **Search & Filter** - Search by name/resource group, filter by region
 - ✅ **OS Detection** - Linux/Windows icons displayed for each VM
 
+#### Terraform Integration (NEW!)
+- ✅ **Template Management** - Inline Monaco editor for Terraform templates
+- ✅ **Resource Group Templates** - Store and edit RG Terraform templates in DB
+- ✅ **VM Templates** - Store and edit VM Terraform templates in DB
+- ✅ **Plan Execution** - Automated `terraform init` and `terraform plan`
+- ✅ **Plan Storage** - Store plans with sequential numeric IDs (starting at 1000)
+- ✅ **Plan Visualization** - Display logs and plan output in modal
+- ✅ **File Management** - Auto-generate terraform files in dedicated folders
+- ✅ **No-Color Output** - Clean terminal output for better readability
+
 #### Settings Management
-- ✅ **Tabbed Settings Interface** with three sections:
+- ✅ **Tabbed Settings Interface** with five sections:
   - **Cloud Providers** - Azure connection management (AWS/vCenter placeholders)
   - **Notification Settings** - Toggle preferences for alerts
+  - **Terraform** - Edit and save Terraform templates (RG & VM)
+  - **Bicep** - Edit and save Bicep templates (RG & VM)
   - **User Management** - Profile and user administration UI
 
 #### Pages & Navigation
@@ -44,11 +57,14 @@ A multi-cloud VM management dashboard for Azure, AWS, and vCenter built with Nex
 - **Database**: PostgreSQL (Docker)
 - **ORM**: Prisma 6.18.0
 - **Icons**: Lucide React 0.462.0
+- **Code Editor**: Monaco Editor (VS Code editor component)
+- **IaC Tools**: Terraform (automated execution)
 - **Azure SDKs**: 
   - `@azure/identity` - Authentication
   - `@azure/arm-subscriptions` - Subscription management
   - `@azure/arm-compute` - VM operations
   - `@azure/arm-network` - Network interface operations
+  - `@azure/arm-resources` - Resource group operations
 
 ## 🗄️ Database Schema
 
@@ -101,6 +117,33 @@ A multi-cloud VM management dashboard for Azure, AWS, and vCenter built with Nex
 - createdAt, updatedAt, lastSyncedAt: DateTime
 ```
 
+#### `TerraformTemplate` (Singleton)
+```prisma
+- id: "terraform_template" (fixed ID - only one record)
+- rgContent: Text (Resource Group template)
+- vmContent: Text (VM template)
+- createdAt, updatedAt: DateTime
+```
+
+#### `BicepTemplate` (Singleton)
+```prisma
+- id: "bicep_template" (fixed ID - only one record)
+- rgContent: Text (Resource Group template)
+- vmContent: Text (VM template)
+- createdAt, updatedAt: DateTime
+```
+
+#### `TerraformPlan`
+```prisma
+- id: Int @autoincrement (starts at 1000)
+- type: String (resource-group | vm)
+- variables: Json (terraform variables)
+- status: String (pending | init | planning | success | failed)
+- output: Text? (raw terraform output)
+- errorMessage: Text?
+- createdAt, updatedAt: DateTime
+```
+
 #### `DeploymentLog`
 ```prisma
 - id: String (cuid)
@@ -147,6 +190,44 @@ Saves/updates Azure subscription configuration (upsert).
 Retrieves all Azure VMs from local database (fast).
 - Returns: VM list with stats
 - No Azure API calls - reads from DB only
+
+### Terraform APIs
+
+#### `GET /api/terraform/template`
+Retrieves stored Terraform templates (RG and VM).
+- Returns: `{ rgContent, vmContent }` from singleton record
+
+#### `POST /api/terraform/template`
+Saves/updates Terraform templates (upsert).
+- Body: `{ rgContent, vmContent }`
+- Singleton pattern - only one template record
+
+#### `POST /api/terraform/plan`
+**Creates and executes Terraform plan**:
+1. Creates database record with sequential ID (1000+)
+2. Creates folder: `terraform/{planId}/`
+3. Writes files:
+   - `rg.tf` - Template from database
+   - `terraform.tfvars` - User input values
+4. Executes `terraform init -no-color`
+5. Executes `terraform plan -no-color -out=apply.tfplan`
+6. Generates `plan.txt` via `terraform show -no-color`
+7. Updates database with output and status
+- Body: `{ type, variables }`
+- Returns: `{ success, planId, folder, output }`
+
+#### `GET /api/terraform/plan/[id]/tfplan`
+Retrieves human-readable plan file.
+- Reads pre-generated `plan.txt` file
+- Returns: formatted plan content
+
+### Bicep APIs
+
+#### `GET /api/bicep/template`
+Retrieves stored Bicep templates (RG and VM).
+
+#### `POST /api/bicep/template`
+Saves/updates Bicep templates (upsert).
 
 ## 🔐 Authentication & Authorization
 
@@ -198,11 +279,18 @@ slate-400: #94a3b8  // Secondary text
 terradmin/
 ├── app/
 │   ├── api/
-│   │   └── azure/
-│   │       ├── subscriptions/route.ts  # Fetch Azure subscriptions
-│   │       ├── config/route.ts         # Get/save Azure config
-│   │       ├── sync/route.ts           # Sync VMs from Azure
-│   │       └── vms/route.ts            # Get VMs from DB
+│   │   ├── azure/
+│   │   │   ├── subscriptions/route.ts  # Fetch Azure subscriptions
+│   │   │   ├── config/route.ts         # Get/save Azure config
+│   │   │   ├── sync/route.ts           # Sync VMs from Azure
+│   │   │   └── vms/route.ts            # Get VMs from DB
+│   │   ├── terraform/
+│   │   │   ├── template/route.ts       # Get/save Terraform templates
+│   │   │   └── plan/
+│   │   │       ├── route.ts            # Create/execute plan
+│   │   │       └── [id]/tfplan/route.ts # Get plan output
+│   │   └── bicep/
+│   │       └── template/route.ts       # Get/save Bicep templates
 │   ├── azure/page.tsx                  # Azure VMs management (fully functional)
 │   ├── aws/page.tsx                    # AWS placeholder
 │   ├── vcenter/page.tsx                # vCenter placeholder
@@ -214,16 +302,30 @@ terradmin/
 │   ├── Sidebar.tsx                     # Navigation sidebar
 │   ├── Header.tsx                      # Top header
 │   ├── DashboardCard.tsx               # Stat cards
+│   ├── Toast.tsx                       # Toast notification component
 │   ├── AzureConfigModal.tsx            # Azure config modal
+│   ├── azure/
+│   │   └── ResourceGroupModal.tsx      # RG deployment modal with plan execution
 │   └── settings/
 │       ├── CloudProviders.tsx          # Cloud provider settings
 │       ├── NotificationSettings.tsx    # Notification prefs
+│       ├── TerraformSettings.tsx       # Terraform template editor
+│       ├── BicepSettings.tsx           # Bicep template editor
 │       └── UserManagement.tsx          # User management UI
 ├── lib/
 │   └── prisma.ts                       # Prisma singleton
 ├── prisma/
 │   ├── schema.prisma                   # Database schema
 │   └── migrations/                     # Migration history
+├── terraform/                          # Terraform plan folders (gitignored)
+│   ├── .gitkeep                        # Preserve folder in git
+│   ├── 1000/                           # Plan ID folders
+│   │   ├── rg.tf                       # Generated template
+│   │   ├── terraform.tfvars            # User variables
+│   │   ├── apply.tfplan                # Binary plan file
+│   │   ├── plan.txt                    # Human-readable plan
+│   │   └── .terraform/                 # Terraform working dir
+│   └── 1001/                           # Next plan...
 ├── docker-compose.yml                  # PostgreSQL container
 ├── tailwind.config.ts                  # Tailwind configuration
 ├── tsconfig.json                       # TypeScript config
@@ -236,6 +338,7 @@ terradmin/
 - Node.js 18+
 - Docker & Docker Compose
 - Azure CLI (`az`) installed and authenticated (`az login`)
+- Terraform CLI (`terraform`) installed at `/usr/bin/terraform`
 
 ### Installation
 
@@ -276,12 +379,20 @@ npm run dev
 
 ### First-Time Setup
 
+#### Azure Connection
 1. Navigate to **Settings** → **Cloud Providers**
 2. Click **Configure** on Microsoft Azure
 3. Select your Azure subscription from dropdown
 4. Click **Save Configuration**
 5. Go to **Azure VMs** page
 6. Click **Refresh** button to sync VMs
+
+#### Terraform Templates
+1. Navigate to **Settings** → **Terraform**
+2. Select "Resource Group Template" or "VM Template"
+3. Edit templates in the Monaco editor
+4. Click **Save Template** to persist to database
+5. Templates are used for all plan operations
 
 ## 🔄 How Azure Sync Works
 
@@ -332,11 +443,37 @@ The sync process (`POST /api/azure/sync`) performs the following:
 - Region dropdown (dynamically populated from synced VMs)
 - Filters work together
 
+**Action Buttons**:
+- **Refresh** - Fetches fresh data from Azure and updates database
+- **Resource Group** - Opens modal to create Terraform plan for new RG
+- **Deploy New VM** - (Placeholder) Future VM deployment
+
 **Refresh Button**:
 - Fetches fresh data from Azure
 - Updates database
 - Reloads display
 - Shows spinner while syncing
+
+### Resource Group Deployment Modal
+
+**Plan Creation Workflow**:
+1. Click **"+ Resource Group"** button
+2. Fill in form:
+   - Resource Group Name (required)
+   - Location/Region (dropdown)
+3. Click **"Plan"** button
+4. System performs:
+   - Creates `terraform/{id}/` folder
+   - Generates `rg.tf` from stored template
+   - Creates `terraform.tfvars` with user inputs
+   - Executes `terraform init -no-color`
+   - Executes `terraform plan -no-color -out=apply.tfplan`
+   - Generates `plan.txt` for human reading
+5. Modal switches to results view with two tabs:
+   - **Logs** - Shows full terraform init + plan output
+   - **Plan File** - Shows formatted plan from plan.txt
+6. **Run** button (placeholder for future `terraform apply`)
+7. **Close** to exit modal
 
 ### Settings Page
 
@@ -349,6 +486,19 @@ The sync process (`POST /api/azure/sync`) performs the following:
 - Toggle switches for preferences
 - Email, deployment, error, weekly, cost alerts
 
+**Terraform Tab**:
+- Toggle between "Resource Group Template" and "VM Template"
+- Monaco editor (VS Code-like) for editing templates
+- Syntax highlighting for HCL (Terraform language)
+- Save button persists templates to database (singleton pattern)
+- Toast notifications for save confirmation
+
+**Bicep Tab**:
+- Similar to Terraform tab
+- Toggle between "Resource Group Template" and "VM Template"
+- Monaco editor for Bicep templates
+- Save functionality (currently placeholder data)
+
 **User Management Tab**:
 - Current user profile
 - Users table (placeholder data)
@@ -357,25 +507,27 @@ The sync process (`POST /api/azure/sync`) performs the following:
 ## 📝 Next Steps / TODO
 
 ### High Priority
-1. **VM Actions** - Implement start/stop/restart/delete for Azure VMs
-2. **VM Details Modal** - Click VM to see full details
-3. **Auto-refresh** - Periodic sync in background
-4. **Error Handling** - Better error messages and retry logic
-5. **Loading States** - More granular loading indicators
+1. **Terraform Apply** - Implement "Run" button to execute `terraform apply`
+2. **VM Actions** - Implement start/stop/restart/delete for Azure VMs
+3. **VM Deployment** - Terraform plan for VM creation (similar to RG)
+4. **Plan History** - View list of all terraform plans with status
+5. **VM Details Modal** - Click VM to see full details
 
 ### Medium Priority
-6. **Azure VM Deployment** - Form to create new Azure VMs
-7. **Resource Group Filtering** - Add resource group dropdown filter
+6. **Plan Management** - Delete/archive old plans
+7. **Apply Status Tracking** - Track terraform apply execution
 8. **Dashboard Stats** - Populate homepage with real data
-9. **Cost Tracking** - Display Azure costs per VM
-10. **Authentication** - Real user auth system
+9. **Auto-refresh** - Periodic sync in background
+10. **Error Handling** - Better error messages and retry logic
 
 ### Low Priority
-11. **AWS Integration** - Similar to Azure implementation
-12. **vCenter Integration** - On-premise VM management
-13. **Notifications System** - Actual notification backend
-14. **User Management** - Real user CRUD operations
-15. **Audit Logs** - Track all actions in DeploymentLog
+11. **Bicep Integration** - Similar to Terraform (templates ready, execution pending)
+12. **Cost Tracking** - Display Azure costs per VM
+13. **AWS Integration** - Similar to Azure implementation
+14. **vCenter Integration** - On-premise VM management
+15. **Authentication** - Real user auth system
+16. **User Management** - Real user CRUD operations
+17. **Audit Logs** - Track all actions in DeploymentLog
 
 ## 🐛 Known Issues
 
@@ -384,6 +536,9 @@ The sync process (`POST /api/azure/sync`) performs the following:
 3. **Single Subscription** - Only one Azure subscription supported
 4. **No Pagination** - VM list loads all VMs at once
 5. **Hardcoded User** - User profile is static
+6. **Terraform Path** - Hardcoded to `/usr/bin/terraform` (may need adjustment per system)
+7. **No Apply Function** - "Run" button in plan modal doesn't execute terraform apply yet
+8. **No Plan History** - Can't view previous plans (only stored in DB)
 
 ## 🔧 Development Commands
 
@@ -446,6 +601,26 @@ docker exec -it postgres_db psql -U dbadmin -d terradmin
 - No secrets in code
 - Easy transition to production (DefaultAzureCredential)
 
+### Why Terraform CLI execution instead of SDK?
+- Direct control over terraform workflow
+- Easier to capture and display output
+- Standard terraform commands (familiar to DevOps)
+- Plan files generated exactly as terraform expects
+- Simplifies debugging
+
+### Why Monaco Editor?
+- Professional code editing experience
+- Syntax highlighting for HCL/Bicep
+- IntelliSense and error detection
+- Same editor as VS Code
+- Familiar to developers
+
+### Why sequential numeric plan IDs?
+- Easy to reference and communicate (Plan 1000, 1001, etc.)
+- Clean folder structure (`terraform/1000/`)
+- Better than random UUIDs for human readability
+- Sortable and predictable
+
 ## 📚 Additional Resources
 
 - [Next.js Documentation](https://nextjs.org/docs)
@@ -458,8 +633,19 @@ docker exec -it postgres_db psql -U dbadmin -d terradmin
 
 ISC
 
+## 🔥 Recent Updates
+
+### Latest Features (November 1, 2025)
+- ✅ **Terraform Integration** - Full template management and plan execution
+- ✅ **Monaco Editor** - Professional code editor for IaC templates
+- ✅ **Resource Group Planning** - Create terraform plans with visual feedback
+- ✅ **Toast Notifications** - Replaced browser alerts with custom toast component
+- ✅ **Plan Visualization** - Two-tab view for logs and plan output
+- ✅ **Sequential Plan IDs** - Clean numbering system starting at 1000
+- ✅ **No-Color Output** - Clean terminal logs without ANSI codes
+
 ---
 
 **Last Updated**: November 1, 2025  
-**Primary Focus**: Azure VM Management  
-**Status**: Development - Core features functional, ready for VM actions implementation
+**Primary Focus**: Azure VM Management + Terraform Integration  
+**Status**: Development - Core Azure features functional, Terraform planning operational, ready for apply implementation

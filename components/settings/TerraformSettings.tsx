@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { FileCode, Plus, Edit, Trash2, Copy, Save } from 'lucide-react'
 import Editor from '@monaco-editor/react'
+import Toast from '@/components/Toast'
 
 interface Template {
   id: string
@@ -15,6 +16,7 @@ interface Template {
 export default function TerraformSettings() {
   const [selectedType, setSelectedType] = useState<'resource-group' | 'vm'>('resource-group')
   const [isSaving, setIsSaving] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   
   // Default Resource Group Terraform template
   const [rgTemplate, setRgTemplate] = useState(`resource "azurerm_resource_group" "main" {
@@ -240,14 +242,53 @@ output "vm_public_ip" {
 
   const filteredTemplates = templates.filter(t => t.type === selectedType)
   
+  // Load templates from database on mount
+  useEffect(() => {
+    loadTemplates()
+  }, [])
+
+  const loadTemplates = async () => {
+    try {
+      const response = await fetch('/api/terraform/template')
+      const data = await response.json()
+      
+      if (data.success && data.template) {
+        if (data.template.rgContent) {
+          setRgTemplate(data.template.rgContent)
+        }
+        if (data.template.vmContent) {
+          setVmTemplate(data.template.vmContent)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading templates:', error)
+    }
+  }
+  
   const handleSaveTemplate = async () => {
     setIsSaving(true)
     try {
-      // TODO: API call to save template
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Simulate API call
-      alert('Template saved successfully!')
-    } catch (error) {
-      alert('Failed to save template')
+      const response = await fetch('/api/terraform/template', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          rgContent: rgTemplate,
+          vmContent: vmTemplate,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setToast({ message: 'Template saved successfully!', type: 'success' })
+      } else {
+        throw new Error(data.error || 'Failed to save')
+      }
+    } catch (error: any) {
+      console.error('Save error:', error)
+      setToast({ message: 'Failed to save template', type: 'error' })
     } finally {
       setIsSaving(false)
     }
@@ -361,6 +402,15 @@ output "vm_public_ip" {
             />
           </div>
         </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
       )}
     </div>
   )

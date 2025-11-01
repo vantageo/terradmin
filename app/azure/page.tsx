@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Cloud, Plus, Search, Filter, RefreshCw, Monitor } from 'lucide-react'
+import { Cloud, Plus, Search, Filter, RefreshCw, Monitor, FolderPlus } from 'lucide-react'
+import ResourceGroupModal from '@/components/azure/ResourceGroupModal'
 
 interface VM {
   id: string
@@ -30,6 +31,7 @@ export default function AzurePage() {
   const [syncing, setSyncing] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedRegion, setSelectedRegion] = useState('all')
+  const [isRGModalOpen, setIsRGModalOpen] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -104,6 +106,13 @@ export default function AzurePage() {
           >
             <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
             <span>{syncing ? 'Syncing...' : 'Refresh'}</span>
+          </button>
+          <button 
+            onClick={() => setIsRGModalOpen(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-navy-700 hover:bg-navy-600 text-white font-medium rounded-lg transition-colors border border-navy-600"
+          >
+            <FolderPlus className="w-5 h-5" />
+            <span>Resource Group</span>
           </button>
           <button className="flex items-center space-x-2 px-4 py-2 bg-accent-500 hover:bg-accent-600 text-navy-900 font-medium rounded-lg transition-colors shadow-lg shadow-accent-500/20">
             <Plus className="w-5 h-5" />
@@ -279,6 +288,12 @@ export default function AzurePage() {
           </table>
         </div>
       </div>
+
+      {/* Resource Group Modal */}
+      <ResourceGroupModal 
+        isOpen={isRGModalOpen} 
+        onClose={() => setIsRGModalOpen(false)} 
+      />
     </div>
   )
 }

@@ -38,3 +38,15 @@ next-env.d.ts
 
 
 /generated/prisma
+
+# terraform plans
+/terraform/*
+!/terraform/.gitkeep
+
+# terraform working files
+**/.terraform/
+**/.terraform.lock.hcl
+**/apply.tfplan
+**/plan.txt
+**/terraform.tfstate
+**/terraform.tfstate.backup

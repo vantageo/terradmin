@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { FileJson, Plus, Edit, Trash2, Copy } from 'lucide-react'
+import Toast from '@/components/Toast'
 
 interface Template {
   id: string
