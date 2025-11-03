@@ -7,7 +7,7 @@ import Header from '@/components/Header'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'TerraAdmin - Multi-Cloud VM Manager',
+  title: 'Vantage Point - Multi-Cloud VM Manager',
   description: 'Manage Azure, AWS, and vCenter virtual machines from a single dashboard',
 }
 

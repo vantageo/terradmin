@@ -39,7 +39,7 @@ export default function Sidebar() {
             <div className="w-8 h-8 bg-accent-500 rounded-lg flex items-center justify-center">
               <Cloud className="w-5 h-5 text-navy-900" />
             </div>
-            <span className="text-xl font-bold text-accent-400">TerraAdmin</span>
+            <span className="text-xl font-bold text-accent-400">Vantage Point</span>
           </div>
         )}
         <button
@@ -84,7 +84,7 @@ export default function Sidebar() {
       {!collapsed && (
         <div className="p-4 border-t border-navy-700">
           <div className="text-xs text-slate-400">
-            <p>TerraAdmin v1.0</p>
+            <p>Vantage Point v1.0</p>
             <p className="mt-1">Multi-Cloud VM Manager</p>
           </div>
         </div>

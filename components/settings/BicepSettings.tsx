@@ -162,7 +162,7 @@ resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
   location: location
   tags: {
     Environment: environment
-    ManagedBy: 'TerraAdmin'
+    ManagedBy: 'Vantage Point'
     CreatedDate: utcNow()
   }
 }
@@ -207,7 +207,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2023-03-01' = {
     }
   }
   tags: {
-    ManagedBy: 'TerraAdmin'
+    ManagedBy: 'Vantage Point'
   }
 }
 

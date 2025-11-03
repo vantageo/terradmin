@@ -29,7 +29,7 @@ export default function SettingsPage() {
           <SettingsIcon className="w-7 h-7 text-accent-400" />
           <span>Settings</span>
         </h2>
-        <p className="text-slate-400 mt-1">Configure your TerraAdmin environment and preferences</p>
+        <p className="text-slate-400 mt-1">Configure your Vantage Point environment and preferences</p>
       </div>
 
       {/* Tabs Navigation */}

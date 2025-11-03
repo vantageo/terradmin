@@ -13,7 +13,7 @@ const pageTitles: Record<string, string> = {
 
 export default function Header() {
   const pathname = usePathname()
-  const title = pageTitles[pathname] || 'TerraAdmin'
+  const title = pageTitles[pathname] || 'Vantage Point'
 
   return (
     <header className="h-16 bg-navy-800 border-b border-navy-700 flex items-center justify-between px-6">

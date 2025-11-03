@@ -1,4 +1,4 @@
-# TerraAdmin
+# Vantage Point
 
 A multi-cloud VM management dashboard for Azure, AWS, and vCenter built with Next.js, TypeScript, and Tailwind CSS.
 
